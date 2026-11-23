@@ -1,0 +1,71 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  Settings for the email export. Edit this file in TextEdit, save, then run.
+#  Lines starting with # are notes and are ignored.
+#  Keep the indentation (spaces at the start of lines) as it is.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── WHAT TO LOOK FOR ─────────────────────────────────────────────────────────
+# A whole email chain is exported if ANY ONE email in it matches.
+
+# 1. Words or phrases in the subject or body. Upper/lower case doesn't matter.
+#      invoice              the word "invoice"
+#      "project falcon"     the exact phrase
+#      invoic*              any word starting with "invoic" (invoice, invoicing...)
+#      /INV-\d{4}/          a regular expression, for advanced use
+keywords:
+  - example keyword
+  - "an example phrase"
+
+keyword_options:
+  whole_words: true                 # true: "art" does not match "party"
+  search_in: [subject, body]        # can also include attachment_names
+
+# 2. Emails FROM these people.
+#      alice@example.com    that exact address
+#      "@example.com"       anyone at that domain (keep the quotes)
+#      Alice Smith          part of a sender's name or address
+senders:
+  - someone@example.com
+
+# 3. Chains with at least one email sent between these dates (inclusive).
+#    Add more "- from / to" pairs for several periods. Dates are YEAR-MONTH-DAY.
+date_ranges:
+  - from: 2026-03-01
+    to: 2026-03-05
+
+# any = a chain is exported if it matches rule 1 OR 2 OR 3
+# all = a chain must match every rule you have filled in
+#       (different emails in the chain can satisfy different rules)
+combine: any
+
+# To switch a rule off, leave it empty, for example:    senders: []
+
+
+# ── WHERE THE MAIL COMES FROM ────────────────────────────────────────────────
+source: bridge                      # bridge, or folder (see eml_folder below)
+
+bridge:
+  host: 127.0.0.1
+  imap_port: 1143                   # shown in Bridge under Settings
+  security: starttls                # starttls or ssl, as set in Bridge
+  folders: ["All Mail"]             # "All Mail" covers everything, sent mail included
+  download_since:                   # optional, e.g. 2025-01-01: skip older mail
+  download_before:                  # optional
+
+# Only used when source is "folder": a folder of .eml files, such as the
+# output of the Proton Mail Export Tool.
+eml_folder:
+
+
+# ── WHAT TO PRODUCE ──────────────────────────────────────────────────────────
+output_folder: exports              # each run makes a new dated folder in here
+timezone:                           # e.g. Australia/Perth; blank = this Mac's timezone
+save_attachments: true              # save attached files next to the PDFs
+copy_originals: true                # keep the original .eml of every exported email
+link_by_subject: false              # true: also join "Re: X" replies that lost their
+                                    #   reply headers to the chain titled "X"
+open_when_done: true                # open the index in your browser at the end
+
+pdf:
+  paper: A4                         # A4 or Letter
+  body: html                        # html = as the email looked; text = plain text only

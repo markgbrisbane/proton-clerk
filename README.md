@@ -4,8 +4,12 @@ Finds email chains in your Proton Mail mailbox and saves each one as a PDF,
 with an index page for browsing them. A chain is exported when any email in it:
 
 - contains one of your keywords in its subject or body, or
-- was sent by one of the people you list, or
+- was sent by one of the people you list (or, if you choose, was sent to them
+  or copied to them), or
 - was sent within one of your date ranges.
+
+The dates can instead be used as a limit: only chains that match a keyword or
+a person and also have an email inside the dates.
 
 Nothing in your mailbox is changed. The script only reads.
 
@@ -32,6 +36,17 @@ open it in Finder, choose Go > Go to Folder and type `~/mail-export`.
 The settings file opens in TextEdit. Fill in your keywords, senders and dates
 following the examples in the file. Save with Cmd+S, then quit TextEdit with
 Cmd+Q. The export starts when TextEdit quits.
+
+Two settings change how the rules behave:
+
+- `look_for_people_in: [from, to, cc]` also finds chains where a listed person
+  only received an email or was cc'd. Left as `[from]`, only emails they sent
+  count. The index and the PDFs show `sender:` or `recipient:` next to each
+  match, so you can see which it was. Bcc can't be searched.
+- `limit_to_date_ranges: true` turns the dates into a limit. A chain is then
+  exported only if it matches a keyword or a person and has at least one email
+  inside the dates. The whole chain is exported, so a PDF can include emails
+  from outside the dates. Left as `false`, the dates are a rule of their own.
 
 The first time:
 

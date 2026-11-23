@@ -20,12 +20,19 @@ keyword_options:
   whole_words: true                 # true: "art" does not match "party"
   search_in: [subject, body]        # can also include attachment_names
 
-# 2. Emails FROM these people.
+# 2. Emails involving these people.
 #      alice@example.com    that exact address
 #      "@example.com"       anyone at that domain (keep the quotes)
-#      Alice Smith          part of a sender's name or address
+#      Alice Smith          part of a person's name or address
 senders:
   - someone@example.com
+
+#    Where to look for those people:
+#      [from]               only emails they sent
+#      [from, to, cc]       emails they sent, emails sent to them, and emails
+#                           they were copied (cc'd) on
+#    Bcc can't be searched.
+look_for_people_in: [from]
 
 # 3. Chains with at least one email sent between these dates (inclusive).
 #    Add more "- from / to" pairs for several periods. Dates are YEAR-MONTH-DAY.
@@ -37,6 +44,13 @@ date_ranges:
 # all = a chain must match every rule you have filled in
 #       (different emails in the chain can satisfy different rules)
 combine: any
+
+# false = the dates are rule 3, as described above
+# true  = the dates are a limit on rules 1 and 2 instead: a chain is exported
+#         only if it matches a keyword or a person AND has at least one email
+#         inside the dates. The whole chain is still exported, so a PDF can
+#         include emails from outside the dates.
+limit_to_date_ranges: false
 
 # To switch a rule off, leave it empty, for example:    senders: []
 

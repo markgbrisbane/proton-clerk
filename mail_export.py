@@ -15,7 +15,7 @@ The steps, in the order main() calls them:
   2. sync_from_bridge()   download new messages into ./cache and index them
                           (or index_eml_folder() if source is "folder")
   3. build_chains()       group messages into chains using their reply headers
-  4. find_matches()       apply the keyword / sender / date rules to each chain
+  4. find_matches()       apply the keyword / people / date rules to each chain
   5. export_chain()       write one PDF per chain (+ attachments, originals)
   6. write_index()        index.html, index.csv, index.json
 
@@ -61,7 +61,9 @@ DEFAULTS = {
     "keywords": [],
     "keyword_options": {"whole_words": True, "search_in": ["subject", "body"]},
     "senders": [],
+    "look_for_people_in": ["from"],
     "date_ranges": [],
+    "limit_to_date_ranges": False,
     "combine": "any",
     "source": "bridge",
     "bridge": {
@@ -154,6 +156,20 @@ def load_config(path: Path) -> dict:
     tidy = lambda values: [t for t in (str(v).strip(" “”‘’") for v in values) if t]
     cfg["keywords"] = tidy(cfg["keywords"])       # also drops curly quotes added by a text editor
     cfg["senders"] = tidy(cfg["senders"])
+
+    places = [p.lower() for value in cfg["look_for_people_in"] for p in re.split(r"[,\s]+", str(value)) if p]
+    for place in places:
+        if place not in PEOPLE_PLACES:
+            hint = (" Bcc can't be searched." if place == "bcc" else "")
+            die(f"'{place}' in look_for_people_in isn't one of from, to or cc.{hint}\n"
+                "Write it like this:   look_for_people_in: [from, to, cc]")
+    if not places:
+        die("look_for_people_in is empty. Write it like this:   look_for_people_in: [from, to, cc]")
+    cfg["look_for_people_in"] = [p for p in PEOPLE_PLACES if p in places]
+    if cfg["limit_to_date_ranges"] is None:
+        cfg["limit_to_date_ranges"] = False
+    if not isinstance(cfg["limit_to_date_ranges"], bool):
+        die(f"'limit_to_date_ranges' must be either true or false, not '{cfg['limit_to_date_ranges']}'.")
     for key in ("download_since", "download_before"):
         cfg["bridge"][key] = as_date(cfg["bridge"][key], f"bridge.{key}")
 
@@ -163,6 +179,12 @@ def load_config(path: Path) -> dict:
         die("'source' must be either bridge or folder.")
     if not (cfg["keywords"] or cfg["senders"] or cfg["date_ranges"]):
         die("config.yaml has no keywords, senders or date_ranges, so there is nothing to look for.")
+    if cfg["limit_to_date_ranges"] and not cfg["date_ranges"]:
+        die("limit_to_date_ranges is true but date_ranges is empty, so there are no dates to limit to.\n"
+            "Fill in date_ranges, or set limit_to_date_ranges: false.")
+    if cfg["limit_to_date_ranges"] and not (cfg["keywords"] or cfg["senders"]):
+        die("limit_to_date_ranges is true but there are no keywords or senders for the dates to limit.\n"
+            "Add a keyword or a person, or set limit_to_date_ranges: false.")
     try:
         cfg["tz"] = ZoneInfo(cfg["timezone"]) if cfg["timezone"] else None
     except Exception:
@@ -573,6 +595,9 @@ def keyword_pattern(keyword: str, whole_words: bool) -> re.Pattern:
     return re.compile(pattern, re.I)
 
 
+PEOPLE_PLACES = ("from", "to", "cc")       # the headers look_for_people_in can name
+
+
 def sender_matches(rule: str, name: str, address: str) -> bool:
     rule, name, address = rule.lower(), (name or "").lower(), (address or "").lower()
     if rule.startswith("@"):                                  # @example.com = whole domain
@@ -589,6 +614,7 @@ def find_matches(chains: list[list[dict]], cfg: dict) -> list[dict]:
     fields = set(options["search_in"])
     active = [name for name, rules in (("keyword", cfg["keywords"]), ("sender", cfg["senders"]),
                                        ("date", cfg["date_ranges"])) if rules]
+    places = cfg["look_for_people_in"]
     matched = []
     for messages in chains:
         kinds = set()
@@ -603,15 +629,25 @@ def find_matches(chains: list[list[dict]], cfg: dict) -> list[dict]:
                 haystack += m["attachment_names"]
             text = "\n".join(haystack)
             reasons += [f"keyword: {k}" for k, pattern in patterns if pattern.search(text)]
-            reasons += [f"sender: {s}" for s in cfg["senders"]
-                        if sender_matches(s, m["from_name"], m["from_addr"])]
+            received = [pair for place in ("to", "cc") if place in places for pair in m[f"{place}_addrs"]]
+            for s in cfg["senders"]:
+                if "from" in places and sender_matches(s, m["from_name"], m["from_addr"]):
+                    reasons.append(f"sender: {s}")
+                if any(sender_matches(s, name, address) for name, address in received):
+                    reasons.append(f"recipient: {s}")
             if m["date_ts"] is not None:
                 day = local_time(m["date_ts"], cfg["tz"]).date()
                 reasons += [f"date: {a} to {b}" if a != b else f"date: {a}"
                             for a, b in cfg["date_ranges"] if a <= day <= b]
             m["reasons"] = reasons
-            kinds |= {reason.split(":")[0] for reason in reasons}
-        wanted = any(k in kinds for k in active) if cfg["combine"] == "any" else all(k in kinds for k in active)
+            # A person found as a recipient satisfies the same rule as one found as the sender.
+            kinds |= {reason.split(":")[0].replace("recipient", "sender") for reason in reasons}
+        if cfg["limit_to_date_ranges"]:
+            # The dates narrow the other rules instead of being a rule of their own.
+            others = [k for k in active if k != "date"]
+            wanted = "date" in kinds and (any if cfg["combine"] == "any" else all)(k in kinds for k in others)
+        else:
+            wanted = any(k in kinds for k in active) if cfg["combine"] == "any" else all(k in kinds for k in active)
         if wanted:
             reasons = sorted({r for m in messages for r in m["reasons"]})
             matched.append({"messages": messages, "reasons": reasons})
@@ -900,8 +936,10 @@ def link(path: str | None, label: str) -> str:
 
 def write_index(entries: list[dict], out: Path, cfg: dict):
     criteria = {
-        "keywords": cfg["keywords"], "senders": cfg["senders"], "combine": cfg["combine"],
+        "keywords": cfg["keywords"], "senders": cfg["senders"],
+        "look_for_people_in": cfg["look_for_people_in"], "combine": cfg["combine"],
         "date_ranges": [[str(a), str(b)] for a, b in cfg["date_ranges"]],
+        "limit_to_date_ranges": cfg["limit_to_date_ranges"],
     }
     generated = dt.datetime.now().astimezone(cfg["tz"]).strftime("%Y-%m-%d %H:%M %Z")
     (out / "index.json").write_text(json.dumps(

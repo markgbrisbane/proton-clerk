@@ -7,7 +7,7 @@
 # login, the downloaded mail and earlier exports.
 set -euo pipefail
 
-REF="361c8523edcb5be15af8b090c98eec49f22335e9"       # the exact version of the files this installer fetches
+REF="9676abfd46fcd6550e1f40a7e98062df822eaa9a"       # the exact version of the files this installer fetches
 SOURCE="${MAIL_EXPORT_SOURCE:-https://github.com/markgbrisbane/proton-clerk/archive/$REF.tar.gz}"
 DEST="$HOME/mail-export"
 
